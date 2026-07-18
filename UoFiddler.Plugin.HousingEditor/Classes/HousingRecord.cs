@@ -78,6 +78,15 @@ namespace UoFiddler.Plugin.HousingEditor
         [DisplayName("Comment")]
         public string Comment { get; set; } = String.Empty;
 
+        /// <summary>
+        /// In-game label resolved from housing.bin's ClilocId column via
+        /// Cliloc.esp/Cliloc.enu (see <see cref="Classes.ClilocResolver"/>).
+        /// Empty for records with no ClilocId or an unresolved one.
+        /// </summary>
+        [Category("General")]
+        [DisplayName("Cliloc Name")]
+        public string ClilocName { get; set; } = String.Empty;
+
         //=========================================================
         // housing.bin
         //=========================================================
@@ -167,6 +176,7 @@ namespace UoFiddler.Plugin.HousingEditor
                 SourceFile = SourceFile,
                 SourceLine = SourceLine,
                 Comment = Comment,
+                ClilocName = ClilocName,
                 RawData = (byte[])RawData.Clone()
             };
 

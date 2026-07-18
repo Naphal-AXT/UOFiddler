@@ -109,6 +109,12 @@ UoFiddler.Plugin.HousingEditor/
                                             a legacy TXT category as the
                                             source of column names and to
                                             know which rows to look for.
+        ClilocResolver.cs                  Resolves a decoded record's
+                                            ClilocId to its in-game label via
+                                            the client's Cliloc.esp (tried
+                                            first) / Cliloc.enu (fallback),
+                                            using the core Ultima.StringList
+                                            reader. Caches per client path.
     UserControls/HousingEditorControl.cs   The tab's UI: tree + field grid +
                                             property grid + toolbar actions.
 ```
@@ -135,7 +141,10 @@ UoFiddler.Plugin.HousingEditor/
    plugin decodes as many records of each category as it can verify
    against that reference, shown in the tree alongside the raw node.
    A summary reports X/Y records per category; categories/records it
-   can't verify are left out rather than guessed.
+   can't verify are left out rather than guessed. Each decoded record's
+   "Cliloc Name" (property grid) is resolved automatically from the
+   post-UOP client's own `Cliloc.esp`/`Cliloc.enu` - see "Cliloc name
+   resolution" below.
 6. **Add / Delete** - operate on the selected category (or the
    category of the selected record) / selected record.
 7. **Save** - pre-UOP only: writes every touched category back to its
@@ -178,9 +187,8 @@ fileTypeCount x {
                                  ModernUO's HousingFlags.HousingEJ
                                  (0xFF02D0) recovers the TXT's exact
                                  FeatureMask value
-        u32   clilocId        - resolves in Cliloc.enu to the in-game
-                                 label; not resolved by this plugin (no
-                                 Cliloc.enu reader yet), kept opaque -
+        u32   clilocId        - resolves in Cliloc.esp/Cliloc.enu to the
+                                 in-game label (see `ClilocResolver.cs`) -
                                  not needed to round-trip values
         group fields1
         u32   unknown         - ONLY present when fileType == 5 (Walls),
@@ -308,20 +316,43 @@ entries spanning two designs or duplicating slots: the per-entry/
 per-row structure this codec reconstructs for editing was never needed
 by the game itself, only by us.
 
+## Cliloc name resolution
+
+Every decoded housing.bin record carries a `ClilocId` column (see
+above). `Classes/ClilocResolver.cs` resolves it to the in-game label
+using the client's own `Cliloc.esp`/`Cliloc.enu`, shown in the record's
+property grid as "Cliloc Name". Verified against a real client:
+223/223 (100%) of decoded records with a `ClilocId` resolve to a
+non-empty label.
+
+`Cliloc.esp` (Spanish) is tried first, falling back to `Cliloc.enu`
+(English) only when the Spanish file doesn't have that id - the
+Spanish localization covers fewer entries (18,247 vs. English's
+123,481 on the client this was verified against), so newer
+expansion-era pieces (Gargish/Jungle/Shadowguard doors, for example)
+resolve in English while everything else resolves in Spanish.
+
+Both files turned out to need **Mythic compression** (a proprietary
+BWT + move-to-front scheme, XOR-obfuscated length header) rather than
+being plain text as some community documentation assumes for older
+clients - confirmed empirically: the classic uncompressed `{u32 id,
+u8 flag, u16 length, text}` format produced garbage on this client's
+files, and the file's leading 4th byte matches the compressed-cliloc
+marker. No new code was needed for this: `Ultima.StringList` (core
+library) already auto-detects compressed vs. uncompressed and falls
+back between the two, backed by an existing `MythicDecompress` +
+move-to-front implementation - `ClilocResolver` is a thin wrapper
+around it that just picks esp-then-enu and caches per client path.
+
 ## What's left
 
 1. **The 4-record gap above** - not expected to be closeable from this
    housing.bin file's own data; the only way forward would be a
    different client build's housing.bin that happens to include these
    3 graphics, if one exists.
-2. **A `Cliloc.enu` reader** to resolve `clilocId` to the in-game label
-   independently of a legacy TXT reference - format confirmed via
-   multiple independent open-source implementations (ClassicUO,
-   ClassicAssist, OpenUO all agree): 6-byte header, then repeating
-   `{u32 id, u8 flag, u16 length, char[length] text (UTF8)}` to EOF.
-3. **housing.bin writer** (round-trip save) - realistic now that
+2. **housing.bin writer** (round-trip save) - realistic now that
    decoding doesn't depend on a legacy reference at all (only on
    knowing which TXT rows exist, for column names and to detect which
    rows have no binary entry) - not implemented yet.
-4. Further out: building/rebuilding `MultiCollection.uop` and
+3. Further out: building/rebuilding `MultiCollection.uop` and
    `multi.mul/idx` from edited data.

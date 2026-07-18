@@ -201,7 +201,12 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
                     category.Columns.AddRange(legacyCategory.Columns);
 
                     foreach (HousingRecord record in decoded)
+                    {
+                        if (record.Contains("ClilocId"))
+                            record.ClilocName = ClilocResolver.Resolve(Project.ClientPath, record.Get("ClilocId"));
+
                         category.Add(record);
+                    }
 
                     totalDecoded += decoded.Count;
 

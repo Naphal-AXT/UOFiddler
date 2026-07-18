@@ -45,11 +45,11 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
     ///                                  0x1, "T2A"/base game) - mask with
     ///                                  <see cref="HousingTierMask"/> to
     ///                                  get the TXT's FeatureMask value
-    ///         u32   clilocId         - resolves in Cliloc.enu to the
-    ///                                  in-game label; not resolved here
-    ///                                  (no Cliloc.enu reader yet), kept
-    ///                                  opaque - not needed to round-trip
-    ///                                  values
+    ///         u32   clilocId         - resolves via Cliloc.esp/enu (see
+    ///                                  <see cref="ClilocResolver"/>) to the
+    ///                                  in-game label. Captured here as the
+    ///                                  "ClilocId" column; not needed to
+    ///                                  round-trip piece values on its own
     ///         group fields1
     ///         u32   unknownWallsOnly - ONLY present when fileType == 5
     ///                                  (Walls), between the two groups
@@ -194,7 +194,7 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
 
                     entryUsed[e] = true;
                     recordSlots[r] = BuildRecord(r, legacyCategory, legacyCategory[r], pieceColumns,
-                        entries[e].Values, (int)(entries[e].FeatureMask & HousingTierMask));
+                        entries[e].Values, (int)(entries[e].FeatureMask & HousingTierMask), entries[e].ClilocId);
                     break;
                 }
             }
@@ -235,8 +235,8 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
 
                         entryUsed[e] = true;
                         int featureMask = (int)(entries[e].FeatureMask & HousingTierMask);
-                        recordSlots[r1] = BuildRecord(r1, legacyCategory, legacyCategory[r1], pieceColumns, entries[e].Values, featureMask);
-                        recordSlots[r2] = BuildRecord(r2, legacyCategory, legacyCategory[r2], pieceColumns, entries[e].Values, featureMask);
+                        recordSlots[r1] = BuildRecord(r1, legacyCategory, legacyCategory[r1], pieceColumns, entries[e].Values, featureMask, entries[e].ClilocId);
+                        recordSlots[r2] = BuildRecord(r2, legacyCategory, legacyCategory[r2], pieceColumns, entries[e].Values, featureMask, entries[e].ClilocId);
                         matchedPair = true;
                         break;
                     }
@@ -262,7 +262,7 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
 
                     entryUsed[e] = true;
                     recordSlots[r] = BuildRecord(r, legacyCategory, legacyCategory[r], pieceColumns,
-                        entries[e].Values, (int)(entries[e].FeatureMask & HousingTierMask));
+                        entries[e].Values, (int)(entries[e].FeatureMask & HousingTierMask), entries[e].ClilocId);
                     break;
                 }
             }
@@ -284,6 +284,7 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
         private sealed class Entry
         {
             public uint FeatureMask;
+            public uint ClilocId;
             public List<int> Values = new();
         }
 
@@ -312,9 +313,9 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
                         _ = ReadU32(housing, ref cursor); // categoryId - not TXT row order, see class remarks
                         _ = ReadU32(housing, ref cursor); // subcategoryId - matches TXT Style when present
                         uint featureMask = ReadU32(housing, ref cursor);
-                        _ = ReadU32(housing, ref cursor); // clilocId - opaque, see class remarks
+                        uint clilocId = ReadU32(housing, ref cursor);
 
-                        Entry entry = new() { FeatureMask = featureMask };
+                        Entry entry = new() { FeatureMask = featureMask, ClilocId = clilocId };
 
                         ReadGroup(housing, ref cursor, entry.Values);
 
@@ -425,7 +426,8 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
             HousingRecord legacyRecord,
             List<string> pieceColumns,
             List<int> decodedValues,
-            int decodedFeatureMask)
+            int decodedFeatureMask,
+            uint clilocId)
         {
             HousingRecord record = new HousingRecord
             {
@@ -434,6 +436,9 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
                 SourceFile = "housing.bin",
                 Comment = legacyRecord.Comment
             };
+
+            if (clilocId != 0)
+                record.Set("ClilocId", (int)clilocId);
 
             if (legacyRecord.Contains("FeatureMask"))
                 record.Set("FeatureMask", decodedFeatureMask);
