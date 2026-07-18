@@ -56,7 +56,10 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
         private const long FirstTable = 0x200;
         private const int TableSize = 0x64;
 
-        private readonly record struct RawEntry(ulong Hash, byte[] Data, int DecompressedSize, short Flag);
+        // internal (not private) so the regression test for the TOC-writer bug below
+        // can exercise ReadRawEntries/WriteRawUop directly, without needing a full
+        // multi.mul/multi.idx fixture just to reach them through Repack().
+        internal readonly record struct RawEntry(ulong Hash, byte[] Data, int DecompressedSize, short Flag);
 
         /// <summary>
         /// True if this client has what repacking needs: multi.mul and
@@ -139,7 +142,7 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
             WriteRawUop(merged, outputPath);
         }
 
-        private static List<RawEntry> ReadRawEntries(string path)
+        internal static List<RawEntry> ReadRawEntries(string path)
         {
             using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             using BinaryReader reader = new(stream);
@@ -191,7 +194,7 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
             return entries;
         }
 
-        private static void WriteRawUop(List<RawEntry> entries, string outputPath)
+        internal static void WriteRawUop(List<RawEntry> entries, string outputPath)
         {
             using FileStream stream = new(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
             using BinaryWriter writer = new(stream);

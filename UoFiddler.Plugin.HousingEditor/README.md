@@ -5,6 +5,19 @@ which multi/item pieces are valid walls, doors, floors, stairs, roofs,
 teleporters and "misc" pieces (curved walls, etc.) when placing a
 custom house.
 
+## Tests
+
+`UoFiddler.Plugin.HousingEditor.Tests` (xUnit) covers the codec, writer
+and repacker with hand-built synthetic fixtures - deliberately not real
+client data, since housing.bin/Cliloc/etc. are EA/Broadsword's licensed
+content and shouldn't be bundled into this repo. Includes direct
+regression tests for both real bugs found and fixed during this
+project (see "Writing housing.bin" and "Repacking into
+MultiCollection.uop" below for the stories): `HousingCategory.Add()`
+silently reassigning a record's `Index`, and the low-level UOP table
+writer dropping every entry in a file's last table. Run with
+`dotnet test UoFiddler.Plugin.HousingEditor.Tests`.
+
 ## Background: two on-disk formats
 
 **Pre-UOP clients (2D)** ship this data as 7 plain tab-separated TXT
