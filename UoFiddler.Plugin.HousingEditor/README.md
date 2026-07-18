@@ -379,26 +379,47 @@ around it that just picks esp-then-enu and caches per client path.
 into fresh housing.bin bytes, using the same section/entry structure
 `HousingBinCodec` reads.
 
-This is a **functional** writer, not a byte-exact one: it doesn't try
-to reproduce Origin's original entry order, `categoryId` values, the
-`fields1`/`fields2` split, or per-piece `direction` tags, because none
-of those affect how the file is actually consumed - the same
-`ComponentVerification` finding from the section above applies here:
-the live game flattens every piece into one flat table regardless of
-which entry or group it came from. So the writer puts every one of a
-record's non-zero piece values into `fields1` with a sequential
-placeholder `direction`, leaves `fields2` empty, and uses the record's
-own list position as `categoryId` - structurally valid, and
-functionally identical to any other valid layout a real consumer would
-accept.
+This is still not a byte-exact writer - `categoryId` uses the record's
+own list position rather than Origin's original numbering, since that
+isn't recoverable from the TXT data. But as of 2026-07-19 the
+`direction`/group split is no longer an arbitrary placeholder: it
+reproduces the real convention, confirmed against a real Classic
+client's housing.bin via a dedicated analysis harness (see
+`docs/FILEFORMATS.md` in the sibling ThePiperBox repo for the full
+evidence). `direction` is the fixed 1-based position of a piece's
+column within its own group's on-disk order - not compacted when an
+earlier column in that order is zero. For Doors/Floors/Roof/Teleports/
+Misc that order is simply the TXT column declaration order (a single
+group, `fields2` empty). Walls splits its TXT columns at a fixed point:
+the first 8 (`South1..Post`, the wall-structure pieces) go in
+`fields1`, the remaining window-variant columns
+(`WindowS..SecondAltWindowE`) go in `fields2` - both in TXT order.
+Stairs is the one category whose `fields1` order is NOT the TXT order:
+`Block` (the TXT's first column) moves to the very end of `fields1`
+instead of staying first; `fields2` is the trailing `Multi*` TXT
+columns, in TXT order.
 
-Verified by writing every decoded category back out and re-decoding
-the result with the same codec, using the same legacy reference:
-**429/429 (100%) of values round-trip unchanged** (write → decode
-gives back the exact same field values for every record that
-decoded in the first place - naturally, records that housing.bin never
-had data for to begin with, the same 4-record gap above, still can't
-appear after a round-trip either, since there was nothing to write).
+Verified two ways:
+1. Writing every decoded category back out and re-decoding the result
+   with the same codec, using the same legacy reference: **429/429
+   (100%) of values round-trip unchanged** (write → decode gives back
+   the exact same field values for every record that decoded in the
+   first place - naturally, records that housing.bin never had data
+   for to begin with, the same 4-record gap above, still can't appear
+   after a round-trip either, since there was nothing to write).
+2. Comparing the freshly-written bytes directly against the real
+   client's own housing.bin at the `(direction, value)` pair level (not
+   just re-decodability): **3,612 of 3,687 real pairs (98.0%)
+   reproduced exactly byte-for-byte**. Doors, Stairs, Roof and
+   Teleports match 100%; Floors 99.1%; Walls 97.1%; Misc 95.8% - the
+   remaining gaps line up with the same irregular rows already called
+   out above (e.g. the Celtic Walls entries), not a failure of the
+   convention itself. Covered by a dedicated regression test suite
+   (`HousingBinWriterDirectionTests.cs`) that locks in the exact
+   `direction` values for Doors/Stairs/Walls at the byte level, since
+   `HousingBinCodec`'s own decode API doesn't expose `direction` (it
+   isn't needed to round-trip piece values), so a regression here would
+   otherwise be silent through every other test in this project.
 
 **A real bug this surfaced and fixed**: `HousingCategory.Add()` used
 to reassign every added record's `Index` to its sequential position in
@@ -479,3 +500,17 @@ table to patch.
    and, relatedly, editing the 71 UOP-only multis themselves (they're
    carried forward unchanged, not currently editable through this
    plugin since they have no `multi.mul` representation to begin with).
+   Note: neither this plugin nor `UoFiddler.Plugin.MultiEditor` has a
+   UOP-aware multi *writer* today - see that plugin's own README.
+3. `categoryId` still uses the record's own list position rather than
+   Origin's original numbering - unlike `direction` (see "Writing
+   housing.bin" above), this wasn't reverse engineered this round and
+   remains a placeholder. Not known to affect any real consumer
+   (`ComponentVerification` ignores it), so low priority.
+4. The Enhanced Client's own raw source for housing.bin,
+   `Runtime/Data/Definitions/Multi/housing.xml` (confirmed to exist via
+   a real EC install's `assetmap.xml`, resourcetype 20 - see
+   docs/FILEFORMATS.md in the sibling ThePiperBox repo), would very
+   likely make the remaining `categoryId`/Celtic-Walls/Misc gaps trivial
+   to close if it's ever found on disk - no installation available in
+   this pass had the `Runtime/` tree, only the manifest describing it.

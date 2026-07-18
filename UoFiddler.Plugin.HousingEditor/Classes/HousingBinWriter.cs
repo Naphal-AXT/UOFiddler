@@ -21,31 +21,37 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
     /// housing.bin byte array, using the same structure confirmed and
     /// documented in <see cref="HousingBinCodec"/>.
     ///
-    /// This is a **functional** writer, not a byte-exact one: it doesn't
-    /// try to reproduce Origin's original entry order, categoryId values,
-    /// group1/group2 split, or per-piece "direction" tags, because none of
-    /// those affect how the file is actually consumed. Confirmed via
-    /// ModernUO's own <c>ComponentVerification.LoadFromHousingBin</c> (see
-    /// the codec's remarks and README.md): the live game just flattens
-    /// every (direction, staticId) pair from every entry into one flat
-    /// `graphicId -&gt; featureMask` table, regardless of which entry,
-    /// group, or category_id it came from. So this writer puts every
-    /// non-zero piece value into fields1 with a sequential placeholder
-    /// direction, leaves fields2 empty, and uses the record's own list
-    /// index as categoryId - structurally valid, and functionally
-    /// identical to any other valid layout a real consumer would accept.
+    /// The `direction` tag and the group1/group2 split are now written
+    /// using the real convention confirmed 2026-07-18 against a real
+    /// Classic client (see docs/FILEFORMATS.md in the sibling ThePiperBox
+    /// repo for the full evidence): `direction` is the fixed 1-based
+    /// position of a piece's column within its own group's on-disk column
+    /// order - not compacted when a column is zero. For Doors/Floors/
+    /// Roof/Teleports/Misc that order is simply the TXT declaration order
+    /// (a single group, fields2 empty). Walls splits its TXT columns at a
+    /// fixed point: the first 8 (South1..Post, the wall-structure pieces)
+    /// go in fields1, the remaining window-variant columns
+    /// (WindowS..SecondAltWindowE) go in fields2 - both in TXT order.
+    /// Stairs is the one category whose fields1 order is NOT the TXT
+    /// order: `Block` (the TXT's first column) is moved to the very end
+    /// of fields1 instead of staying first; fields2 is the trailing
+    /// `Multi*` TXT columns, in TXT order.
     ///
-    /// One category (Teleports) round-trips through housing.bin's real
-    /// consumer differently from the other six - ModernUO's parser routes
-    /// its group2 into a *separate* multi-id table (Stairs is the only
-    /// other one) rather than the flat item table. Since this writer
-    /// always uses fields1/empty-fields2, Teleports pieces land in the
-    /// same table Doors/Floors/etc. do, not Stairs' multi-id table - the
-    /// two happen to share the same wire format either way (see
-    /// <see cref="HousingBinCodec"/> - `isStairs` only changes which table
-    /// group2's staticIds are written into, not the byte layout itself),
-    /// so this is a labeling distinction inside a real server's own code,
-    /// not a structural requirement of the file.
+    /// This is still not guaranteed byte-identical to Origin's own writer
+    /// - `categoryId` uses the record's own list index (entry order and
+    /// original categoryId numbering aren't recoverable from the TXT
+    /// data), and a small number of real rows didn't fit this rule
+    /// cleanly during verification (2/58 Floors, 5/96 Misc, 41/186 Walls -
+    /// see docs/FILEFORMATS.md) - but every category's `direction`
+    /// convention is now reproduced deliberately instead of a sequential
+    /// placeholder, which is a real, functionally-motivated improvement
+    /// confirmed via ModernUO's own <c>ComponentVerification.
+    /// LoadFromHousingBin</c>: the live game flattens every
+    /// (direction, staticId) pair into one `graphicId -&gt; featureMask`
+    /// table regardless of entry/group/category_id, so structural
+    /// validity was never at risk - this change is about matching the
+    /// real file's shape as closely as now confirmed, not about fixing a
+    /// functional bug.
     /// </summary>
     internal static class HousingBinWriter
     {
@@ -62,6 +68,23 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
             };
 
         private const int WallsFileType = 5;
+
+        // Confirmed 2026-07-18 against a real client: Walls splits its TXT
+        // columns (South1, South2, South3, Corner, East1, East2, East3,
+        // Post, WindowS, AltWindowS, WindowE, AltWindowE,
+        // SecondAltWindowS, SecondAltWindowE) at a fixed point - the first
+        // 8 (wall structure) go in fields1, the rest (window variants) in
+        // fields2, both still in TXT order.
+        private const int WallsGroup1Size = 8;
+
+        // Stairs' fields1 order is a fixed permutation, NOT the TXT
+        // column order - "Block" (TXT's first column) moves to the end.
+        // fields2 is the trailing Multi* TXT columns, in TXT order.
+        private static readonly string[] StairsGroup1Order =
+            { "North", "East", "South", "West", "Squared1", "Squared2", "Rounded1", "Rounded2", "Block" };
+
+        private static readonly string[] StairsGroup2Order =
+            { "MultiNorth", "MultiEast", "MultiSouth", "MultiWest" };
 
         /// <summary>
         /// Builds a fresh housing.bin (decompressed) from every recognized
@@ -96,18 +119,37 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
                 writer.Write((uint)category.Count);
 
                 List<string> pieceColumns = HousingBinCodec.PieceColumns(category.Columns);
+                (List<string> group1Order, List<string> group2Order) = FieldOrder(category.Name, pieceColumns, isWalls);
 
                 foreach (HousingRecord record in category)
-                    WriteRecord(writer, record, pieceColumns, isWalls);
+                    WriteRecord(writer, record, group1Order, group2Order, isWalls);
             }
 
             return stream.ToArray();
         }
 
+        /// <summary>
+        /// The fixed, confirmed on-disk column order for each of a
+        /// category's two groups - see the class remarks for the evidence
+        /// behind each case.
+        /// </summary>
+        private static (List<string> group1, List<string> group2) FieldOrder(
+            string categoryName, List<string> pieceColumns, bool isWalls)
+        {
+            if (categoryName.Equals("Stairs", StringComparison.OrdinalIgnoreCase))
+                return (StairsGroup1Order.ToList(), StairsGroup2Order.ToList());
+
+            if (isWalls)
+                return (pieceColumns.Take(WallsGroup1Size).ToList(), pieceColumns.Skip(WallsGroup1Size).ToList());
+
+            return (pieceColumns, EmptyGroup);
+        }
+
         private static void WriteRecord(
             BinaryWriter writer,
             HousingRecord record,
-            List<string> pieceColumns,
+            List<string> group1Order,
+            List<string> group2Order,
             bool isWalls)
         {
             uint categoryId = (uint)record.Index;
@@ -120,35 +162,43 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
             writer.Write(featureMask);
             writer.Write(clilocId);
 
-            List<int> pieces = new();
-            foreach (string column in pieceColumns)
-            {
-                int value = record.Get(column);
-                if (value != 0)
-                    pieces.Add(value);
-            }
-
-            WriteGroup(writer, pieces);
+            WriteGroup(writer, record, group1Order);
 
             if (isWalls)
                 writer.Write((uint)0); // unknown, walls-only
 
-            WriteGroup(writer, EmptyGroup);
+            WriteGroup(writer, record, group2Order);
 
             if (!isWalls)
                 writer.Write((uint)0); // unknown, non-walls-only
         }
 
-        private static readonly List<int> EmptyGroup = new();
+        private static readonly List<string> EmptyGroup = new();
 
-        private static void WriteGroup(BinaryWriter writer, List<int> values)
+        /// <summary>
+        /// Writes every non-zero column in <paramref name="order"/> as a
+        /// (direction, value) pair - `direction` is that column's fixed
+        /// 1-based position in <paramref name="order"/>, NOT compacted
+        /// when an earlier column in the same order is zero (confirmed
+        /// against a real client - see class remarks).
+        /// </summary>
+        private static void WriteGroup(BinaryWriter writer, HousingRecord record, List<string> order)
         {
-            writer.Write((uint)values.Count);
+            List<(int direction, int value)> pairs = new();
 
-            for (int i = 0; i < values.Count; i++)
+            for (int i = 0; i < order.Count; i++)
             {
-                writer.Write((uint)i); // direction placeholder - not read positionally by any known consumer
-                writer.Write((uint)values[i]);
+                int value = record.Get(order[i]);
+                if (value != 0)
+                    pairs.Add((i + 1, value));
+            }
+
+            writer.Write((uint)pairs.Count);
+
+            foreach ((int direction, int value) in pairs)
+            {
+                writer.Write((uint)direction);
+                writer.Write((uint)value);
             }
         }
     }
