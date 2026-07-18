@@ -115,6 +115,10 @@ UoFiddler.Plugin.HousingEditor/
                                             first) / Cliloc.enu (fallback),
                                             using the core Ultima.StringList
                                             reader. Caches per client path.
+        HousingBinWriter.cs                Serializes decoded categories back
+                                            into fresh housing.bin bytes - see
+                                            "Writing housing.bin" below for
+                                            what "fresh" means here.
     UserControls/HousingEditorControl.cs   The tab's UI: tree + field grid +
                                             property grid + toolbar actions.
 ```
@@ -149,8 +153,7 @@ UoFiddler.Plugin.HousingEditor/
    category of the selected record) / selected record.
 7. **Save** - pre-UOP only: writes every touched category back to its
    original TXT file in the client folder, after a confirmation
-   prompt. Post-UOP saving (rebuilding `housing.bin`) isn't
-   implemented - see below.
+   prompt.
 8. **Analyze** - prints a per-category summary (record/column counts,
    duplicate value-sets) - a quick sanity check after editing.
 9. **Export CSV** - dumps every loaded record as one flat CSV, one row
@@ -159,6 +162,12 @@ UoFiddler.Plugin.HousingEditor/
    housing.bin (see below).
 10. **Export Raw** - post-UOP only: writes the decompressed
     `housing.bin` bytes to a `.bin` file for offline hex-diffing.
+11. **Write housing.bin** - post-UOP only, requires at least one
+    Correlate... run first: serializes every decoded category back
+    into fresh housing.bin bytes and saves them to a file you pick
+    (never overwrites the client's own `housing.bin`). See "Writing
+    housing.bin" below for exactly what this does and doesn't
+    reproduce.
 
 ## Confirmed binary format (housing.bin)
 
@@ -344,15 +353,54 @@ back between the two, backed by an existing `MythicDecompress` +
 move-to-front implementation - `ClilocResolver` is a thin wrapper
 around it that just picks esp-then-enu and caches per client path.
 
+## Writing housing.bin
+
+`Classes/HousingBinWriter.cs` serializes every decoded category back
+into fresh housing.bin bytes, using the same section/entry structure
+`HousingBinCodec` reads.
+
+This is a **functional** writer, not a byte-exact one: it doesn't try
+to reproduce Origin's original entry order, `categoryId` values, the
+`fields1`/`fields2` split, or per-piece `direction` tags, because none
+of those affect how the file is actually consumed - the same
+`ComponentVerification` finding from the section above applies here:
+the live game flattens every piece into one flat table regardless of
+which entry or group it came from. So the writer puts every one of a
+record's non-zero piece values into `fields1` with a sequential
+placeholder `direction`, leaves `fields2` empty, and uses the record's
+own list position as `categoryId` - structurally valid, and
+functionally identical to any other valid layout a real consumer would
+accept.
+
+Verified by writing every decoded category back out and re-decoding
+the result with the same codec, using the same legacy reference:
+**429/429 (100%) of values round-trip unchanged** (write → decode
+gives back the exact same field values for every record that
+decoded in the first place - naturally, records that housing.bin never
+had data for to begin with, the same 4-record gap above, still can't
+appear after a round-trip either, since there was nothing to write).
+
+**A real bug this surfaced and fixed**: `HousingCategory.Add()` used
+to reassign every added record's `Index` to its sequential position in
+the category's list, silently overwriting the meaningful index
+`HousingBinCodec` had already assigned (the legacy TXT row number a
+binary entry was matched to - deliberately sparse, since rows with no
+binary match are skipped rather than guessed). Whenever a category had
+any gap - which is every category with the 4-record gap above -
+every record decoded *after* the gap got silently reassigned a wrong,
+shifted `Index`. `Add()` now leaves `Index` alone.
+
+Not yet implemented: repacking the written housing.bin back into
+`MultiCollection.uop` - see "What's left".
+
 ## What's left
 
 1. **The 4-record gap above** - not expected to be closeable from this
    housing.bin file's own data; the only way forward would be a
    different client build's housing.bin that happens to include these
    3 graphics, if one exists.
-2. **housing.bin writer** (round-trip save) - realistic now that
-   decoding doesn't depend on a legacy reference at all (only on
-   knowing which TXT rows exist, for column names and to detect which
-   rows have no binary entry) - not implemented yet.
-3. Further out: building/rebuilding `MultiCollection.uop` and
-   `multi.mul/idx` from edited data.
+2. **Repacking into `MultiCollection.uop`** - the writer above produces
+   standalone housing.bin bytes; slotting them back into the UOP
+   container (recomputing its hash/offset table around the other 871
+   entries) isn't implemented yet.
+3. Further out: building/rebuilding `multi.mul/idx` from edited data.

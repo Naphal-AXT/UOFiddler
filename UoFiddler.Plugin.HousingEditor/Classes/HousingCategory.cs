@@ -88,14 +88,18 @@ namespace UoFiddler.Plugin.HousingEditor
         }
 
         /// <summary>
-        /// Adds an existing record.
+        /// Adds an existing record, preserving its own Index (e.g. a
+        /// housing.bin-decoded record's Index is the legacy TXT row number
+        /// it was matched against - rows housing.bin has no entry for are
+        /// skipped, so gaps are meaningful and must not be closed up by
+        /// reassigning a sequential Index here). Call <see cref="Reindex"/>
+        /// afterward if sequential indexes are actually wanted.
         /// </summary>
         public void Add(HousingRecord record)
         {
             if (record == null)
                 throw new ArgumentNullException(nameof(record));
 
-            record.Index = _records.Count;
             record.CategoryName = Name;
             record.SourceFile = SourceFile;
 

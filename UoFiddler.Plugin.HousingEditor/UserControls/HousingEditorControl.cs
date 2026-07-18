@@ -40,6 +40,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
             btnExport.Click += BtnExportClick;
             btnExportRaw.Click += BtnExportRawClick;
             btnCorrelate.Click += BtnCorrelateClick;
+            btnWriteBin.Click += BtnWriteBinClick;
             btnAddRecord.Click += BtnAddRecordClick;
             btnDeleteRecord.Click += BtnDeleteRecordClick;
             btnSave.Click += BtnSaveClick;
@@ -228,6 +229,58 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
                 $"Decoded {totalDecoded}/{totalExpected} records from housing.bin using {dlg.SelectedPath} as reference.\n\n" +
                 String.Join("\n", results),
                 "Correlate",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        private void BtnWriteBinClick(object? sender, EventArgs e)
+        {
+            if (Project == null || Project.ClientType != ClientType.Uop)
+            {
+                MessageBox.Show(
+                    "Open a post-UOP client first (one containing MultiCollection.uop).",
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                return;
+            }
+
+            bool hasDecodedCategory = Project.Categories.Any(
+                c => c.SourceFile.Equals("housing.bin", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasDecodedCategory)
+            {
+                MessageBox.Show(
+                    "Run Correlate... first so there is decoded housing.bin data to write back.",
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                return;
+            }
+
+            using SaveFileDialog dlg = new SaveFileDialog
+            {
+                Filter = "housing.bin (*.bin)|*.bin",
+                FileName = "housing.bin"
+            };
+
+            if (dlg.ShowDialog() != DialogResult.OK)
+                return;
+
+            byte[] data = HousingBinWriter.Write(Project);
+            File.WriteAllBytes(dlg.FileName, data);
+
+            lblStatus.Text = $"Wrote {data.Length:N0} bytes to {dlg.FileName}";
+
+            MessageBox.Show(
+                $"Wrote a fresh housing.bin ({data.Length:N0} bytes) to {dlg.FileName}.\n\n" +
+                "Only includes categories decoded via Correlate... - a category " +
+                "that failed to decode, or was never correlated, is simply absent " +
+                "from the file rather than written empty. Not repacked into " +
+                "MultiCollection.uop yet - see README.md.",
+                "Write housing.bin",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

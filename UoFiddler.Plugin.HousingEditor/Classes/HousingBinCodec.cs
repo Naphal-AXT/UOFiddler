@@ -372,18 +372,22 @@ namespace UoFiddler.Plugin.HousingEditor.Classes
 
         /// <summary>
         /// Every numeric column except Category/FeatureMask/Comment/
-        /// Style/TID - Style and TID aren't stored as regular piece
-        /// fields (TID is the record's own cliloc reference; Style is the
-        /// binary entry's subcategoryId).
+        /// Style/TID/ClilocId - Style and TID aren't stored as regular
+        /// piece fields (TID is the record's own cliloc reference; Style
+        /// is the binary entry's subcategoryId; ClilocId is decoded
+        /// separately - see <see cref="ClilocResolver"/>). Internal so
+        /// <see cref="HousingBinWriter"/> uses the exact same definition
+        /// of "piece column" when serializing back.
         /// </summary>
-        private static List<string> PieceColumns(IEnumerable<string> columns)
+        internal static List<string> PieceColumns(IEnumerable<string> columns)
         {
             return columns
                 .Where(c => !c.Equals("Category", StringComparison.OrdinalIgnoreCase) &&
                             !c.Equals("FeatureMask", StringComparison.OrdinalIgnoreCase) &&
                             !c.Equals("Comment", StringComparison.OrdinalIgnoreCase) &&
                             !c.Equals("Style", StringComparison.OrdinalIgnoreCase) &&
-                            !c.Equals("TID", StringComparison.OrdinalIgnoreCase))
+                            !c.Equals("TID", StringComparison.OrdinalIgnoreCase) &&
+                            !c.Equals("ClilocId", StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
 
