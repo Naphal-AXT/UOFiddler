@@ -416,22 +416,44 @@ rather than reading them back out of the original `MultiCollection.uop`,
 repacking needs the client to still ship both side by side (checked by
 `MultiCollectionRepacker.CanRepack` before offering the button) - and
 even then, a multi that only ever existed in the modern UOP with no
-`multi.mul` equivalent can't be reproduced this way. Confirmed
-concretely on the same real client used throughout this document: of
-872 total UOP entries (871 multis + housing.bin), 801 round-trip
-correctly (800 multis + housing.bin) and exactly 71 multis are UOP-only
-and get dropped - matching, byte for byte, the 71 multis this project
-separately found to have no `multi.mul` entry at all when cross-
-checking `MultiCollection.uop` against `multi.mul` earlier (see git
-history) - a real, honest limitation of this approach, not a bug in
-the repacker.
+`multi.mul` equivalent can't be *derived* this way. Confirmed
+concretely on the real client used throughout this document: exactly
+71 of its 872 UOP entries are UOP-only, with no `multi.mul` equivalent
+at all - matching, byte for byte, the 71 multis this project
+separately found missing when cross-checking `MultiCollection.uop`
+against `multi.mul` earlier (see git history).
+
+`Repack` closes this gap itself rather than just reporting it: if the
+client's original `MultiCollection.uop` is present, any entry it has
+that the `multi.mul`-derived rebuild doesn't gets copied across
+**verbatim** (its already-compressed bytes, unmodified) into the
+output - so the final file still has all 872 entries. This isn't
+"deriving" the 71 orphans from anything, just carrying forward bytes
+the original file already had for the entries `multi.mul` alone can't
+reproduce.
 
 Verified end-to-end on the real client: decode → write housing.bin →
 repack into a real `MultiCollection.uop` → reload that file through
 the plugin's own loader (as if it were a client folder) → extract →
-decode again - **429/429 (100%) of values still match**, confirming
-the repacked UOP container itself (not just the raw housing.bin bytes)
-round-trips correctly.
+decode again - **429/429 (100%) of values still match**, and the
+output has all **872/872** entries with zero hash mismatches against
+the original (801 rebuilt with different compressed bytes but
+identical decoded content, confirmed by the 429/429 above; 71 copied
+byte-for-byte).
+
+**A second real bug this surfaced and fixed**: the low-level UOP table
+writer only patched its "next table" pointer - and, as a side effect
+of that same seek, only repositioned to the TOC-entries area - for
+tables that weren't the *last* one. The last table's entries never got
+repositioned back to the right offset before their TOC records were
+written, so they silently landed after all the file's data instead,
+leaving the real TOC area for that table all-zero - which every UOP
+reader (including this project's own) treats as empty/absent entries.
+With more than one table's worth of entries (100 per table; 872 total
+= 9 tables), this made an entire final table's worth of entries -
+consistently 72 of them - vanish. Fixed by always seeking back to the
+TOC area before writing it, independent of whether there's a next
+table to patch.
 
 ## What's left
 
@@ -439,8 +461,8 @@ round-trips correctly.
    housing.bin file's own data; the only way forward would be a
    different client build's housing.bin that happens to include these
    3 graphics, if one exists.
-2. **The 71 UOP-only multis** dropped by repacking (see above) - would
-   need reading them directly out of the original `MultiCollection.uop`
-   instead of only ever building from `multi.mul`/`multi.idx`.
-3. Further out: building/rebuilding `multi.mul/idx` itself from edited
-   data (repacking currently only *reads* multi.mul, never writes it).
+2. Further out: building/rebuilding `multi.mul/idx` itself from edited
+   data (repacking currently only *reads* multi.mul, never writes it) -
+   and, relatedly, editing the 71 UOP-only multis themselves (they're
+   carried forward unchanged, not currently editable through this
+   plugin since they have no `multi.mul` representation to begin with).
