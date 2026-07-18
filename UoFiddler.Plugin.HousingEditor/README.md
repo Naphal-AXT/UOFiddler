@@ -119,6 +119,13 @@ UoFiddler.Plugin.HousingEditor/
                                             into fresh housing.bin bytes - see
                                             "Writing housing.bin" below for
                                             what "fresh" means here.
+        MultiCollectionRepacker.cs         Combines a written housing.bin with
+                                            the client's multi.mul/multi.idx
+                                            into a complete MultiCollection.uop,
+                                            via UoFiddler.Plugin.UopPacker's
+                                            LegacyMulFileConverter - see
+                                            "Repacking into MultiCollection.uop"
+                                            below.
     UserControls/HousingEditorControl.cs   The tab's UI: tree + field grid +
                                             property grid + toolbar actions.
 ```
@@ -390,8 +397,41 @@ any gap - which is every category with the 4-record gap above -
 every record decoded *after* the gap got silently reassigned a wrong,
 shifted `Index`. `Add()` now leaves `Index` alone.
 
-Not yet implemented: repacking the written housing.bin back into
-`MultiCollection.uop` - see "What's left".
+## Repacking into MultiCollection.uop
+
+**Repack UOP** (toolbar) combines a freshly written housing.bin with
+the client's own `multi.mul`/`multi.idx` into a complete
+`MultiCollection.uop`, via `Classes/MultiCollectionRepacker.cs`.
+
+This deliberately reuses `UoFiddler.Plugin.UopPacker`'s own
+`LegacyMulFileConverter.ToUop` (a project reference, not a rewrite) -
+it already builds a correct UOP from `multi.mul`/`multi.idx`, using
+the exact housing.bin identifier hash (`0x126D1E99DDEDEE0A`) this
+project independently confirmed while reverse engineering housing.bin.
+Duplicating that logic here would just be a worse copy of already-
+working code.
+
+Because it rebuilds every multi entry **from `multi.mul`/`multi.idx`**
+rather than reading them back out of the original `MultiCollection.uop`,
+repacking needs the client to still ship both side by side (checked by
+`MultiCollectionRepacker.CanRepack` before offering the button) - and
+even then, a multi that only ever existed in the modern UOP with no
+`multi.mul` equivalent can't be reproduced this way. Confirmed
+concretely on the same real client used throughout this document: of
+872 total UOP entries (871 multis + housing.bin), 801 round-trip
+correctly (800 multis + housing.bin) and exactly 71 multis are UOP-only
+and get dropped - matching, byte for byte, the 71 multis this project
+separately found to have no `multi.mul` entry at all when cross-
+checking `MultiCollection.uop` against `multi.mul` earlier (see git
+history) - a real, honest limitation of this approach, not a bug in
+the repacker.
+
+Verified end-to-end on the real client: decode → write housing.bin →
+repack into a real `MultiCollection.uop` → reload that file through
+the plugin's own loader (as if it were a client folder) → extract →
+decode again - **429/429 (100%) of values still match**, confirming
+the repacked UOP container itself (not just the raw housing.bin bytes)
+round-trips correctly.
 
 ## What's left
 
@@ -399,8 +439,8 @@ Not yet implemented: repacking the written housing.bin back into
    housing.bin file's own data; the only way forward would be a
    different client build's housing.bin that happens to include these
    3 graphics, if one exists.
-2. **Repacking into `MultiCollection.uop`** - the writer above produces
-   standalone housing.bin bytes; slotting them back into the UOP
-   container (recomputing its hash/offset table around the other 871
-   entries) isn't implemented yet.
-3. Further out: building/rebuilding `multi.mul/idx` from edited data.
+2. **The 71 UOP-only multis** dropped by repacking (see above) - would
+   need reading them directly out of the original `MultiCollection.uop`
+   instead of only ever building from `multi.mul`/`multi.idx`.
+3. Further out: building/rebuilding `multi.mul/idx` itself from edited
+   data (repacking currently only *reads* multi.mul, never writes it).

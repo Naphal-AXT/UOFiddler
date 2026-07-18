@@ -41,6 +41,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
             btnExportRaw.Click += BtnExportRawClick;
             btnCorrelate.Click += BtnCorrelateClick;
             btnWriteBin.Click += BtnWriteBinClick;
+            btnRepackUop.Click += BtnRepackUopClick;
             btnAddRecord.Click += BtnAddRecordClick;
             btnDeleteRecord.Click += BtnDeleteRecordClick;
             btnSave.Click += BtnSaveClick;
@@ -278,9 +279,89 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
                 $"Wrote a fresh housing.bin ({data.Length:N0} bytes) to {dlg.FileName}.\n\n" +
                 "Only includes categories decoded via Correlate... - a category " +
                 "that failed to decode, or was never correlated, is simply absent " +
-                "from the file rather than written empty. Not repacked into " +
-                "MultiCollection.uop yet - see README.md.",
+                "from the file rather than written empty. This is the raw " +
+                "decompressed bytes, not yet packed into a UOP container - use " +
+                "Repack UOP for a complete MultiCollection.uop.",
                 "Write housing.bin",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        private void BtnRepackUopClick(object? sender, EventArgs e)
+        {
+            if (Project == null || Project.ClientType != ClientType.Uop)
+            {
+                MessageBox.Show(
+                    "Open a post-UOP client first (one containing MultiCollection.uop).",
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                return;
+            }
+
+            bool hasDecodedCategory = Project.Categories.Any(
+                c => c.SourceFile.Equals("housing.bin", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasDecodedCategory)
+            {
+                MessageBox.Show(
+                    "Run Correlate... first so there is decoded housing.bin data to write back.",
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                return;
+            }
+
+            if (!MultiCollectionRepacker.CanRepack(Project.ClientPath))
+            {
+                MessageBox.Show(
+                    "This client doesn't have multi.mul/multi.idx next to MultiCollection.uop - " +
+                    "repacking needs them to supply the other multi/boat entries. " +
+                    "Use Write housing.bin instead for the raw bytes.",
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
+                return;
+            }
+
+            using SaveFileDialog dlg = new SaveFileDialog
+            {
+                Filter = "MultiCollection.uop (*.uop)|*.uop",
+                FileName = "MultiCollection.uop"
+            };
+
+            if (dlg.ShowDialog() != DialogResult.OK)
+                return;
+
+            byte[] housingBinData = HousingBinWriter.Write(Project);
+
+            try
+            {
+                MultiCollectionRepacker.Repack(Project.ClientPath, housingBinData, dlg.FileName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    ex.Message,
+                    "Housing Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+
+                return;
+            }
+
+            lblStatus.Text = $"Repacked MultiCollection.uop to {dlg.FileName}";
+
+            MessageBox.Show(
+                $"Wrote a complete MultiCollection.uop to {dlg.FileName}, combining this " +
+                "client's own multi.mul/multi.idx (the other multi/boat entries) with the " +
+                "housing.bin just written from your edits.\n\n" +
+                "This never overwrites the client's own MultiCollection.uop - copy it over " +
+                "manually once you've verified it.",
+                "Repack UOP",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

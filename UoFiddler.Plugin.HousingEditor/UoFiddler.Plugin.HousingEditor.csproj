@@ -36,6 +36,10 @@
 			<Private>false</Private>
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
+		<ProjectReference Include="..\UoFiddler.Plugin.UopPacker\UoFiddler.Plugin.UopPacker.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
 	</ItemGroup>
 	<ItemGroup>
 		<Compile Update="UserControls\HousingEditorControl.cs">

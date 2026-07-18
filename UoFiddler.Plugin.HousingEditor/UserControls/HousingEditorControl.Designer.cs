@@ -22,6 +22,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
         private System.Windows.Forms.ToolStripButton btnExportRaw;
         private System.Windows.Forms.ToolStripButton btnCorrelate;
         private System.Windows.Forms.ToolStripButton btnWriteBin;
+        private System.Windows.Forms.ToolStripButton btnRepackUop;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
         private System.Windows.Forms.ToolStripButton btnAddRecord;
         private System.Windows.Forms.ToolStripButton btnDeleteRecord;
@@ -56,6 +57,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
             btnExportRaw = new System.Windows.Forms.ToolStripButton();
             btnCorrelate = new System.Windows.Forms.ToolStripButton();
             btnWriteBin = new System.Windows.Forms.ToolStripButton();
+            btnRepackUop = new System.Windows.Forms.ToolStripButton();
             toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             btnAddRecord = new System.Windows.Forms.ToolStripButton();
             btnDeleteRecord = new System.Windows.Forms.ToolStripButton();
@@ -84,6 +86,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
                 btnExportRaw,
                 btnCorrelate,
                 btnWriteBin,
+                btnRepackUop,
                 toolStripSeparator1,
                 btnAddRecord,
                 btnDeleteRecord,
@@ -98,6 +101,7 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
             btnExportRaw.Text = "Export Raw";
             btnCorrelate.Text = "Correlate...";
             btnWriteBin.Text = "Write housing.bin";
+            btnRepackUop.Text = "Repack UOP";
             btnAddRecord.Text = "Add";
             btnDeleteRecord.Text = "Delete";
             btnSave.Text = "Save";
