@@ -535,6 +535,9 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
                 }
             }
 
+            if (!String.IsNullOrEmpty(record.ClilocName))
+                _fields.Add(new FieldRow("Cliloc Name", record.ClilocName));
+
             dataGridView.ReadOnly = false;
             dataGridView.DataSource = _fields;
 
@@ -542,6 +545,12 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
 
             if (nameColumn != null)
                 nameColumn.ReadOnly = true;
+
+            for (int i = 0; i < _fields.Count; i++)
+            {
+                if (_fields[i].IsReadOnly)
+                    dataGridView.Rows[i].ReadOnly = true;
+            }
         }
 
         private void ShowRawBytes(byte[] data)
@@ -586,7 +595,10 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
 
             FieldRow field = _fields[e.RowIndex];
 
-            _selectedRecord.Set(field.Name, field.Value);
+            if (field.IsReadOnly)
+                return;
+
+            _selectedRecord.Set(field.Name, Convert.ToInt32(field.Value));
         }
 
         //=====================================================================
@@ -631,11 +643,27 @@ namespace UoFiddler.Plugin.HousingEditor.UserControls
             {
                 Name = name;
                 Value = value;
+                IsReadOnly = false;
+            }
+
+            /// <summary>
+            /// Read-only display row (e.g. "Cliloc Name") - not backed by a
+            /// Values entry, so there's nothing for DataGridViewCellEndEdit
+            /// to write back via record.Set().
+            /// </summary>
+            public FieldRow(string name, string displayValue)
+            {
+                Name = name;
+                Value = displayValue;
+                IsReadOnly = true;
             }
 
             public string Name { get; set; }
 
-            public int Value { get; set; }
+            public object Value { get; set; }
+
+            [Browsable(false)]
+            public bool IsReadOnly { get; }
         }
 
         private sealed class HexRow
